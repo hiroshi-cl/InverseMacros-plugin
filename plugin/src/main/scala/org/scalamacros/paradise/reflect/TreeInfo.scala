@@ -71,11 +71,27 @@ trait TreeInfo {
             val annottee = mdef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
             AnnotationZipper(ann, annottee, annottee)
           })
-        case ddef @ DefDef(mods, _, tparams, vparamss, _, _) =>
-          val dzippers = mods.annotations.map(ann => {
+        case ddef@DefDef(mods, name, tparams, vparamss, _, rhs) =>
+          val dd = mods.annotations.map(ann => {
             val annottee = ddef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
             AnnotationZipper(ann, annottee, annottee)
           })
+          /*
+          要約
+          1. annotation を取り出す部分に細工をして ticket 用のマクロアノテーションを差し込んでおく
+          2. 変換後のコードには synthetic フラグを立てて変換がループすることを防ぐ
+          3. コンストラクタは上手く動かないようなので非対応としておく
+          */
+
+          // ここでは Tree の書き換えが必要なものは入れられないので @ticket の方で対応する
+          val dzippers =
+            if (mods.isSynthetic || mods.isMacro || ddef.symbol.isConstructor || name.endsWith(TermName("unapply")))
+            // コンストラクタは面倒みたいなので変換を避ける、あと変換の無限ループも何とかして回避する
+            // macro も inline 展開されてどうにかなるので何もしない
+            // unapply の isEmpty が必要という型チェックを回避できないので飛ばす
+              dd
+            else
+              AnnotationZipper(q"new inverse_macros.inverseMacroEngine()", tree, tree) +: dd // ここでこっそり annotation を紛れ込ませる
           if (!deep) dzippers
           else {
             val tzippers = for {

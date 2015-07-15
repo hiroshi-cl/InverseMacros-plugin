@@ -6,13 +6,14 @@ object build extends Build {
     scalaVersion := "2.11.7",
     crossVersion := CrossVersion.full,
     version := "2.1.0-SNAPSHOT",
-    organization := "org.scalamacros",
-    description := "Empowers production Scala compiler with latest macro developments",
+    organization := "jp.ac.u_tokyo.i.ci.csg.hiroshi_yamaguchi",
+    description := "Empowers production Scala compiler with latest macro developments + inverse macros",
     resolvers += Resolver.sonatypeRepo("snapshots"),
     resolvers += Resolver.sonatypeRepo("releases"),
     publishMavenStyle := true,
     publishArtifact in Test := false,
     scalacOptions ++= Seq("-deprecation", "-feature"),
+    javacOptions  ++= Seq("-source", "1.8", "-target", "1.8"),
     parallelExecution in Test := false, // hello, reflection sync!!
     logBuffered := false,
     scalaHome := {
@@ -24,30 +25,6 @@ object build extends Build {
     }
   )
 
-  def loadCredentials(): List[Credentials] = {
-    val mavenSettingsFile = System.getProperty("maven.settings.file")
-    if (mavenSettingsFile != null) {
-      println("Loading Sonatype credentials from " + mavenSettingsFile)
-      try {
-        import scala.xml._
-        val settings = XML.loadFile(mavenSettingsFile)
-        def readServerConfig(key: String) = (settings \\ "settings" \\ "servers" \\ "server" \\ key).head.text
-        List(Credentials(
-          "Sonatype Nexus Repository Manager",
-          "oss.sonatype.org",
-          readServerConfig("username"),
-          readServerConfig("password")
-        ))
-      } catch {
-        case ex: Exception =>
-          println("Failed to load Maven settings from " + mavenSettingsFile + ": " + ex)
-          Nil
-      }
-    } else {
-      // println("Sonatype credentials cannot be loaded: -Dmaven.settings.file is not specified.")
-      Nil
-    }
-  }
 
   lazy val plugin = Project(
     id   = "paradise",
@@ -58,47 +35,7 @@ object build extends Build {
     resourceDirectory in Compile <<= baseDirectory(_ / "src" / "main" / "scala" / "org" / "scalamacros" / "paradise" / "embedded"),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-library" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
-    libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    // TODO: how to I make this recursion work?
-    // run <<= run in Compile in sandbox,
-    // test <<= test in Test in tests
-    publishMavenStyle := true,
-    publishArtifact in Test := false,
-    publishTo <<= version { v: String =>
-      val nexus = "https://oss.sonatype.org/"
-      if (v.trim.endsWith("SNAPSHOT"))
-        Some("snapshots" at nexus + "content/repositories/snapshots")
-      else
-        Some("releases" at nexus + "service/local/staging/deploy/maven2")
-    },
-    pomIncludeRepository := { x => false },
-    pomExtra := (
-      <url>https://github.com/scalamacros/paradise</url>
-      <inceptionYear>2012</inceptionYear>
-      <licenses>
-        <license>
-          <name>BSD-like</name>
-          <url>http://www.scala-lang.org/downloads/license.html</url>
-          <distribution>repo</distribution>
-        </license>
-      </licenses>
-      <scm>
-        <url>git://github.com/scalamacros/paradise.git</url>
-        <connection>scm:git:git://github.com/scalamacros/paradise.git</connection>
-      </scm>
-      <issueManagement>
-        <system>GitHub</system>
-        <url>https://github.com/scalamacros/paradise/issues</url>
-      </issueManagement>
-      <developers>
-        <developer>
-          <id>xeno-by</id>
-          <name>Eugene Burmako</name>
-          <url>http://xeno.by</url>
-        </developer>
-      </developers>
-    ),
-    credentials ++= loadCredentials()
+    libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _)
   )
 
   lazy val usePluginSettings = Seq(
@@ -123,6 +60,18 @@ object build extends Build {
     publishArtifact in Compile := false
   )
 
+  lazy val library = Project(
+    id = "library",
+    base = file("library")
+  ) settings (
+    sharedSettings: _*
+  ) settings (
+    libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
+    // macroAnnotation に macro フラグを立てるためオリジナルのプラグインを活用
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0-M5" cross CrossVersion.full),
+    publishArtifact in Compile := false
+  )
+
   lazy val tests = Project(
     id   = "tests",
     base = file("tests")
@@ -131,8 +80,8 @@ object build extends Build {
   ) settings (
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    libraryDependencies += "org.scalatest" % "scalatest_2.11.0-M3" % "1.9.1b" % "test",
-    libraryDependencies += "org.scalacheck" % "scalacheck_2.11" % "1.10.2-SNAPSHOT" % "test",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test",
+    libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.12.2" % "test",
     publishArtifact in Compile := false,
     unmanagedSourceDirectories in Test <<= (scalaSource in Test) { (root: File) =>
       // TODO: I haven't yet ported negative tests to SBT, so for now I'm excluding them
@@ -145,6 +94,16 @@ object build extends Build {
       val testcp = (fullClasspath in Test).value.files.map(_.getAbsolutePath).mkString(java.io.File.pathSeparatorChar.toString)
       sys.props("sbt.paths.tests.classpath") = testcp
       (fullClasspath in Test).value
+    },
+    dependencyClasspath in Compile := {
+      (dependencyClasspath in Compile).value.
+        map(f => {println(f.metadata.get(moduleID.key)); f}).
+        filter(_.metadata.get(moduleID.key).get.toString().contains("paradise")).
+      foreach(f => {
+        System.setProperty("sbt.paths.plugin.jar", f.data.getAbsolutePath) // これをセットしておかないといくつかのテストケースで落ちる
+        println(f.data)
+      })
+      (dependencyClasspath in Compile).value
     },
     scalacOptions ++= Seq()
     // scalacOptions ++= Seq("-Xprint:typer")
