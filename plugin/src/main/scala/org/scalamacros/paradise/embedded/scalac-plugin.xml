@@ -1,4 +1,4 @@
 <plugin>
-  <name>macro-paradise-plugin</name>
+  <name>inverse-macros-plugin</name>
   <classname>org.scalamacros.paradise.Plugin</classname>
 </plugin>

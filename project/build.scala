@@ -5,13 +5,14 @@ object build extends Build {
   lazy val sharedSettings = Defaults.defaultSettings ++ Seq(
     scalaVersion := "2.11.7",
     crossVersion := CrossVersion.full,
-    version := "2.1.0-SNAPSHOT",
+    version := "2.1.0",
     organization := "jp.ac.u_tokyo.i.ci.csg.hiroshi_yamaguchi",
     description := "Empowers production Scala compiler with latest macro developments + inverse macros",
     resolvers += Resolver.sonatypeRepo("snapshots"),
     resolvers += Resolver.sonatypeRepo("releases"),
     publishMavenStyle := true,
     publishArtifact in Test := false,
+    publishTo := Some(Resolver.file("file",  new File("target/repo"))),
     scalacOptions ++= Seq("-deprecation", "-feature"),
     javacOptions  ++= Seq("-source", "1.8", "-target", "1.8"),
     parallelExecution in Test := false, // hello, reflection sync!!
@@ -67,8 +68,8 @@ object build extends Build {
     sharedSettings: _*
   ) settings (
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
-    // macroAnnotation に macro フラグを立てるためオリジナルのプラグインを活用
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0-M5" cross CrossVersion.full),
+    // exploit the original plugin for setting the macro flag to macroAnnotation methods
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     publishArtifact in Compile := false
   )
 
@@ -80,8 +81,8 @@ object build extends Build {
   ) settings (
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test",
-    libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.12.2" % "test",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+    libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.12.5" % "test",
     publishArtifact in Compile := false,
     unmanagedSourceDirectories in Test <<= (scalaSource in Test) { (root: File) =>
       // TODO: I haven't yet ported negative tests to SBT, so for now I'm excluding them
@@ -100,7 +101,7 @@ object build extends Build {
         map(f => {println(f.metadata.get(moduleID.key)); f}).
         filter(_.metadata.get(moduleID.key).get.toString().contains("paradise")).
       foreach(f => {
-        System.setProperty("sbt.paths.plugin.jar", f.data.getAbsolutePath) // これをセットしておかないといくつかのテストケースで落ちる
+        System.setProperty("sbt.paths.plugin.jar", f.data.getAbsolutePath) // this setting is required for some test cases
         println(f.data)
       })
       (dependencyClasspath in Compile).value
