@@ -3,7 +3,7 @@ import Keys._
 
 object build extends Build {
   lazy val sharedSettings = Defaults.defaultSettings ++ Seq(
-    scalaVersion := "2.11.7",
+    scalaVersion := "2.12.0-M3",
     crossVersion := CrossVersion.full,
     version := "2.1.0",
     organization := "jp.ac.u_tokyo.i.ci.csg.hiroshi_yamaguchi",
@@ -81,7 +81,7 @@ object build extends Build {
   ) settings (
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.5-M3" % "test",
     libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.12.5" % "test",
     publishArtifact in Compile := false,
     unmanagedSourceDirectories in Test <<= (scalaSource in Test) { (root: File) =>
